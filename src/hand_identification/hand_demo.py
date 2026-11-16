@@ -1,10 +1,3 @@
-"""Simple demo MediaPipe Tasks: 21 landmarks from the hand image.
-
-Examples:
-    uv run hand_identification img/my_hand_back.jpg
-    uv run hand_identification img/my_hand_back.jpg --hands 2 --save
-"""
-
 import argparse
 from pathlib import Path
 
@@ -22,7 +15,6 @@ FINGER_PATHS = [
     [0, 17, 18, 19, 20],  # pinky
     [5, 9, 13, 17],       # base of the fingers
 ]
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Detecting 21 hand's landmarks")
