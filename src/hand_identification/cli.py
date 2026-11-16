@@ -58,7 +58,7 @@ def capture(count, seconds):
                     features = None
                     if result.multi_hand_landmarks:
                         landmarks = result.multi_hand_landmarks[0]
-                        cv2.draw_landmarks(
+                        mp.solutions.drawing_utils.draw_landmarks(
                             frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS
                         )
                         height, width = frame.shape[:2]
