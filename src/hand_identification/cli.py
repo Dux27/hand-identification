@@ -43,46 +43,45 @@ def capture(count, seconds):
             max_num_hands=1,
             model_complexity=0,
         ) as detector:
-            start = time.monotonic()
             captured = 0
             print("Podgląd kamery: naciśnij Q, aby anulować.")
-            for i in range(count):
-                sample_time = start + i * seconds / count
-                while time.monotonic() < sample_time:
-                    ok, frame = camera.read()
-                    if not ok:
-                        raise RuntimeError("Nie udało się odczytać obrazu z kamery.")
+            while captured < count:
+                ok, frame = camera.read()
+                if not ok:
+                    raise RuntimeError("Nie udało się odczytać obrazu z kamery.")
 
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    result = detector.process(rgb)
-                    features = None
-                    if result.multi_hand_landmarks:
-                        landmarks = result.multi_hand_landmarks[0]
-                        mp.solutions.drawing_utils.draw_landmarks(
-                            frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS
-                        )
-                        height, width = frame.shape[:2]
-                        points = np.array([
-                            (point.x * width, point.y * height)
-                            for point in landmarks.landmark
-                        ])
-                        palm_size = np.linalg.norm(points[9] - points[0])
-                        if palm_size >= 20:
-                            distances = np.linalg.norm(points[1:] - points[0], axis=1) / palm_size
-                            features = np.delete(distances, 8)
-
-                    cv2.putText(
-                        frame, f"Ujecia: {captured}/{count}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2,
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                result = detector.process(rgb)
+                features = None
+                if result.multi_hand_landmarks:
+                    landmarks = result.multi_hand_landmarks[0]
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS
                     )
-                    cv2.imshow("Biometria dloni - Q: anuluj", frame)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        raise RuntimeError("Skanowanie anulowane.")
-                    if features is not None:
-                        measurements.append(features)
-                        captured += 1
-                        break
-                print(f"{i + 1}/{count}: {'OK' if captured > i else 'nie wykryto dłoni'}")
+                    height, width = frame.shape[:2]
+                    points = np.array([
+                        (point.x * width, point.y * height)
+                        for point in landmarks.landmark
+                    ])
+                    palm_size = np.linalg.norm(points[9] - points[0])
+                    if palm_size >= 20:
+                        distances = np.linalg.norm(points[1:] - points[0], axis=1) / palm_size
+                        features = np.delete(distances, 8)
+
+                cv2.putText(
+                    frame, f"Ujecia: {captured}/{count}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2,
+                )
+                cv2.imshow("Biometria dloni - Q: anuluj", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    raise RuntimeError("Skanowanie anulowane.")
+
+                if features is not None:
+                    measurements.append(features)
+                    captured += 1
+                    print(f"{captured}/{count}: OK")
+                    if captured < count:
+                        time.sleep(0.5)
     finally:
         camera.release()
         cv2.destroyAllWindows()
