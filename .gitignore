@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# uv
+.venv/
+venv/
+
+# Cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Biometric data and generated results
+/img/
+/results/
+/profiles/
+/data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# MediaPipe models
+/models/*.task
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

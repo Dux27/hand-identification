@@ -1,0 +1,20 @@
+[project]
+name = "hand-identification"
+version = "0.1.0"
+description = "Web server using a machine learning model to identify a person based on their hand biometric features."
+authors = [
+    { name = "Dux27", email = "filip.jaworski279@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "mediapipe==0.10.21",
+    "numpy>=1.26,<2",
+]
+
+[project.scripts]
+hand_identification = "hand_identification.hand_demo:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
