@@ -17,18 +17,23 @@ def hand_features(frame, detector):
     if not result.multi_hand_landmarks:
         return None
 
-    height, width = frame.shape[:2]
+    return landmarks_features(result.multi_hand_landmarks[0], frame.shape)
+
+def landmarks_features(landmarks, frame_shape):
+    """Wylicz cechy i odrzuć niepoprawne lub skrajne punkty."""
+    height, width = frame_shape[:2]
     points = np.array([
-        (point.x * width, point.y * height)
-        for point in result.multi_hand_landmarks[0].landmark
+        (point.x * width, point.y * height) for point in landmarks.landmark
     ])
-
     palm_size = np.linalg.norm(points[9] - points[0])
-    if palm_size < 20:
+    if not np.isfinite(points).all() or palm_size < 20:
         return None
-
-    distances = np.linalg.norm(points[1:] - points[0], axis=1) / palm_size
-    return np.delete(distances, 8)  # Punkt 9 służy już jako skala.
+    features = np.delete(
+        np.linalg.norm(points[1:] - points[0], axis=1) / palm_size, 8
+    )
+    if not np.isfinite(features).all() or np.any(features > 5):
+        return None
+    return features
 
 def capture(count, seconds):
     """Zbierz pomiary z kamery, pokazując na żywo wykryty szkielet dłoni."""
@@ -58,15 +63,7 @@ def capture(count, seconds):
                     mp.solutions.drawing_utils.draw_landmarks(
                         frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS
                     )
-                    height, width = frame.shape[:2]
-                    points = np.array([
-                        (point.x * width, point.y * height)
-                        for point in landmarks.landmark
-                    ])
-                    palm_size = np.linalg.norm(points[9] - points[0])
-                    if palm_size >= 20:
-                        distances = np.linalg.norm(points[1:] - points[0], axis=1) / palm_size
-                        features = np.delete(distances, 8)
+                    features = landmarks_features(landmarks, frame.shape)
 
                 cv2.putText(
                     frame, f"Ujecia: {captured}/{count}", (10, 30),
@@ -156,11 +153,11 @@ def manage_database():
             show_result("Anulowano usuwanie.")
 
 def match_score(samples, mean, std):
-    """Porównaj próbkę z uwzględnieniem rozrzutu próbki i wzorca."""
-    sample_mean = samples.mean(axis=0)
-    sample_std = samples.std(axis=0)
-    combined_std = np.maximum(np.sqrt(std**2 + sample_std**2), 0.05)
-    return float(np.abs((sample_mean - mean) / combined_std).mean())
+    """Porównaj medianę cech, ograniczając wpływ pojedynczych skrajnych pomiarów."""
+    sample_median = np.median(samples, axis=0)
+    scale = np.maximum(std, 0.05)
+    z_scores = np.abs((sample_median - mean) / scale)
+    return float(np.median(np.minimum(z_scores, 10)))
 
 def clear_screen():
     """Wyczyść konsolę (terminal ANSI)."""
@@ -271,8 +268,14 @@ def identification():
         )
         score, name = scores[0]
         ranking = "\n".join(f"{candidate}: {candidate_score:.2f}" for candidate_score, candidate in scores)
-        status = "DOPASOWANO" if score < THRESHOLD else "BRAK ZGODNOŚCI"
-        show_result(f"Najbliższa osoba: {name}\nWyniki:\n{ranking}\n{status}")
+        ambiguous = len(scores) > 1 and scores[1][0] - score < 0.15
+        if score >= THRESHOLD:
+            result = "BRAK ZGODNOŚCI"
+        elif ambiguous:
+            result = "NIEJEDNOZNACZNY WYNIK — ZESKANUJ PONOWNIE"
+        else:
+            result = f"Najbliższa osoba: {name}\nDOPASOWANO"
+        show_result(f"{result}\nWyniki:\n{ranking}")
     except RuntimeError as error:
         show_result(f"Błąd identyfikacji: {error}")
 
