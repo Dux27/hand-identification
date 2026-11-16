@@ -156,8 +156,11 @@ def manage_database():
             show_result("Anulowano usuwanie.")
 
 def match_score(samples, mean, std):
-    """Średnia bezwzględna wartość Z-score: mniej znaczy bardziej podobna dłoń."""
-    return float(np.abs((samples - mean) / std).mean())
+    """Porównaj próbkę z uwzględnieniem rozrzutu próbki i wzorca."""
+    sample_mean = samples.mean(axis=0)
+    sample_std = samples.std(axis=0)
+    combined_std = np.maximum(np.sqrt(std**2 + sample_std**2), 0.05)
+    return float(np.abs((sample_mean - mean) / combined_std).mean())
 
 def clear_screen():
     """Wyczyść konsolę (terminal ANSI)."""
@@ -262,12 +265,14 @@ def identification():
     clear_screen()
     try:
         samples = capture(3, 1.5)
-        score, name = min(
+        scores = sorted(
             (match_score(samples, mean, std), name)
             for name, mean, std in users
         )
+        score, name = scores[0]
+        ranking = "\n".join(f"{candidate}: {candidate_score:.2f}" for candidate_score, candidate in scores)
         status = "DOPASOWANO" if score < THRESHOLD else "BRAK ZGODNOŚCI"
-        show_result(f"Najbliższa osoba: {name}\nZ-score: {score:.2f}\n{status}")
+        show_result(f"Najbliższa osoba: {name}\nWyniki:\n{ranking}\n{status}")
     except RuntimeError as error:
         show_result(f"Błąd identyfikacji: {error}")
 
