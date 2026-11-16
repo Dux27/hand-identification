@@ -31,32 +31,61 @@ def hand_features(frame, detector):
     return np.delete(distances, 8)  # Punkt 9 służy już jako skala.
 
 def capture(count, seconds):
-    """Zbierz pomiary z kamery w równych odstępach czasu."""
+    """Zbierz pomiary z kamery, pokazując na żywo wykryty szkielet dłoni."""
     camera = cv2.VideoCapture(0)
     if not camera.isOpened():
         raise RuntimeError("Nie można otworzyć kamery.")
 
     measurements = []
     try:
-        print("Umieść całą dłoń przed kamerą. Start za 3 sekundy...")
-        time.sleep(3)
-
         with mp.solutions.hands.Hands(
-            static_image_mode=True,
+            static_image_mode=False,
             max_num_hands=1,
             model_complexity=0,
         ) as detector:
             start = time.monotonic()
+            captured = 0
+            print("Podgląd kamery: naciśnij Q, aby anulować.")
             for i in range(count):
-                time.sleep(max(0, start + i * seconds / count - time.monotonic()))
-                ok, frame = camera.read()
-                features = hand_features(frame, detector) if ok else None
+                sample_time = start + i * seconds / count
+                while time.monotonic() < sample_time:
+                    ok, frame = camera.read()
+                    if not ok:
+                        raise RuntimeError("Nie udało się odczytać obrazu z kamery.")
 
-                if features is not None:
-                    measurements.append(features)
-                print(f"{i + 1}/{count}: {'OK' if features is not None else 'nie wykryto dłoni'}")
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    result = detector.process(rgb)
+                    features = None
+                    if result.multi_hand_landmarks:
+                        landmarks = result.multi_hand_landmarks[0]
+                        cv2.draw_landmarks(
+                            frame, landmarks, mp.solutions.hands.HAND_CONNECTIONS
+                        )
+                        height, width = frame.shape[:2]
+                        points = np.array([
+                            (point.x * width, point.y * height)
+                            for point in landmarks.landmark
+                        ])
+                        palm_size = np.linalg.norm(points[9] - points[0])
+                        if palm_size >= 20:
+                            distances = np.linalg.norm(points[1:] - points[0], axis=1) / palm_size
+                            features = np.delete(distances, 8)
+
+                    cv2.putText(
+                        frame, f"Ujecia: {captured}/{count}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2,
+                    )
+                    cv2.imshow("Biometria dloni - Q: anuluj", frame)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        raise RuntimeError("Skanowanie anulowane.")
+                    if features is not None:
+                        measurements.append(features)
+                        captured += 1
+                        break
+                print(f"{i + 1}/{count}: {'OK' if captured > i else 'nie wykryto dłoni'}")
     finally:
         camera.release()
+        cv2.destroyAllWindows()
 
     if len(measurements) < count * 0.75:
         raise RuntimeError("Za mało poprawnych pomiarów. Spróbuj ponownie.")
@@ -91,6 +120,42 @@ def list_users():
         for name, mean, std in rows
     ]
 
+def delete_user(name):
+    """Usuń wzorzec użytkownika z bazy."""
+    with sqlite3.connect(DATABASE) as db:
+        create_table(db)
+        cursor = db.execute("DELETE FROM users WHERE name = ?", (name,))
+        return cursor.rowcount > 0
+
+def manage_database():
+    """Wyświetl zapisane osoby i pozwól usunąć wybraną."""
+    while True:
+        users = list_users()
+        clear_screen()
+        print("=== BAZA DANYCH ===")
+        if not users:
+            print("Baza jest pusta.")
+        else:
+            for index, (name, _, _) in enumerate(users, start=1):
+                print(f"{index}. {name}")
+        print("\nU. Usuń osobę")
+        print("3. Wstecz")
+        choice = menu_choice({"u", "U", "3"})
+        if choice == "3":
+            return
+        if not users:
+            show_result("Nie ma osób do usunięcia.")
+            continue
+
+        number = menu_choice({str(i) for i in range(1, len(users) + 1)})
+        name = users[int(number) - 1][0]
+        confirm = input(f"Usunąć użytkownika {name}? (t/n): ").strip().lower()
+        if confirm == "t":
+            delete_user(name)
+            show_result(f"Usunięto użytkownika: {name}")
+        else:
+            show_result("Anulowano usuwanie.")
+
 def match_score(samples, mean, std):
     """Średnia bezwzględna wartość Z-score: mniej znaczy bardziej podobna dłoń."""
     return float(np.abs((samples - mean) / std).mean())
@@ -118,7 +183,7 @@ def registration():
         print("=== REJESTRACJA ===")
         print("- Pokaż całą dłoń od strony wewnętrznej.")
         print("- Rozsuń lekko palce i utrzymuj podobną pozycję.")
-        print("- Kamera pobierze 20 pomiarów w 10 sekund.")
+        print("- Kamera pobierze 30 ujęć w 10 sekund.")
         print("\n1. Rozpocznij rejestrację")
         print("3. Wstecz")
 
@@ -140,7 +205,7 @@ def registration():
 
         clear_screen()
         try:
-            samples = capture(20, 10)
+            samples = capture(30, 10)
             mean = samples.mean(axis=0)
             std = np.maximum(samples.std(axis=0), 0.05)
             save_template(name, mean, std)
@@ -229,14 +294,17 @@ def main():
         print("=== BIOMETRIA DŁONI ===")
         print("1. Rejestracja")
         print("2. Rozpoznawanie")
-        print("3. Wyjście")
+        print("3. Baza danych")
+        print("4. Wyjście")
 
-        match menu_choice({"1", "2", "3"}):
+        match menu_choice({"1", "2", "3", "4"}):
             case "1":
                 registration()
             case "2":
                 recognition()
             case "3":
+                manage_database()
+            case "4":
                 clear_screen()
                 return
 
